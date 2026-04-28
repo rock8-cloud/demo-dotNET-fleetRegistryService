@@ -3,6 +3,7 @@ using FleetRegistryService.Data.Repositories;
 using FleetRegistryService.Repositories;
 using FleetRegistryService.Services;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,17 +29,43 @@ app.Run();
 
 static string GetConnectionString(IConfiguration configuration)
 {
-    var connectionString = configuration["CONNECTION_STRING"];
+    var connectionString = GetConfigurationValue(configuration, "CONNECTION_STRING");
     if (!string.IsNullOrWhiteSpace(connectionString))
     {
         return connectionString;
     }
 
-    var host = configuration["POSTGRES_HOST"] ?? "localhost";
-    var port = configuration["POSTGRES_PORT"] ?? "5432";
-    var database = configuration["POSTGRES_DB"] ?? "orbital_operations";
-    var username = configuration["POSTGRES_USER"] ?? "postgres";
-    var password = configuration["POSTGRES_PASSWORD"] ?? "postgres";
+    var host = GetConfigurationValue(configuration, "POSTGRES_HOST") ?? "localhost";
+    var port = int.TryParse(GetConfigurationValue(configuration, "POSTGRES_PORT"), out var configuredPort)
+        ? configuredPort
+        : 5432;
+    var database = GetConfigurationValue(configuration, "POSTGRES_DB") ?? "orbital_operations";
+    var username = GetConfigurationValue(configuration, "POSTGRES_USER") ?? "postgres";
+    var password = GetConfigurationValue(configuration, "POSTGRES_PASSWORD") ?? "postgres";
 
-    return $"Host={host};Port={port};Database={database};Username={username};Password={password}";
+    return new NpgsqlConnectionStringBuilder
+    {
+        Host = host,
+        Port = port,
+        Database = database,
+        Username = username,
+        Password = password
+    }.ConnectionString;
+}
+
+static string? GetConfigurationValue(IConfiguration configuration, string key)
+{
+    var value = configuration[key];
+    if (!string.IsNullOrWhiteSpace(value))
+    {
+        return value.Trim();
+    }
+
+    var filePath = configuration[$"{key}_FILE"];
+    if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+    {
+        return null;
+    }
+
+    return File.ReadAllText(filePath).Trim();
 }
